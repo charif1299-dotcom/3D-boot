@@ -1,0 +1,143 @@
+<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Interactive 3D Booth – Elementary Education</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
+*{box-sizing:border-box}
+body{margin:0;height:100%;background:#f1f3f5;color:#222;font-family:"Noto Sans Thai",system-ui,sans-serif}
+#app{display:flex;height:100%}
+#cv{flex:1;position:relative;min-width:0;min-height:0;touch-action:none}
+#cv canvas{display:block}
+#vn{position:absolute;left:10px;top:8px;background:#fffc;border-radius:8px;padding:5px 9px;font-size:12px;font-weight:700;pointer-events:none}
+#pn{width:300px;overflow:auto;padding:12px;background:#fff;border-left:1px solid #ddd;font-size:13px}
+#pn h3{margin:12px 0 5px;font-size:12px;color:#2e7d32;letter-spacing:.5px}
+.vb{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+button{padding:8px 4px;border:1px solid #bbb;background:#f7f7f7;border-radius:8px;font:inherit;font-size:12px}
+button.on{background:#2e7d32;color:#fff;border-color:#2e7d32}
+label{display:block;padding:3px 0}
+input[type=range]{width:100%}
+.ok{background:#e6f6ea;color:#1b7a1b;border-radius:6px;padding:5px 8px;margin-top:8px}
+.bad{background:#fde8e8;color:#b00}
+small{color:#666}
+@media(max-width:760px){#app{flex-direction:column}#pn{width:auto;max-height:44%;border-left:0;border-top:1px solid #ddd}}
+</style></head><body>
+<div id="app"><div id="cv"><div id="vn"></div></div><div id="pn"></div></div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+const $=id=>document.getElementById(id),wrap=$('cv');
+const R=new THREE.WebGLRenderer({antialias:true});R.setPixelRatio(Math.min(devicePixelRatio,2));R.shadowMap.enabled=true;R.shadowMap.type=THREE.PCFSoftShadowMap;wrap.appendChild(R.domElement);
+const sc=new THREE.Scene();sc.background=new THREE.Color(0xf1f3f5);
+const cam=new THREE.OrthographicCamera(-1,1,1,-1,-50,100);
+const ctl=new THREE.OrbitControls(cam,R.domElement);ctl.enableDamping=true;ctl.screenSpacePanning=true;ctl.minZoom=.5;ctl.maxZoom=5;
+sc.add(new THREE.HemisphereLight(0xffffff,0xcfd4da,.8));
+const dl=new THREE.DirectionalLight(0xffffff,.7);dl.position.set(4,7,5);dl.castShadow=true;dl.shadow.mapSize.set(2048,2048);Object.assign(dl.shadow.camera,{left:-4,right:4,top:4,bottom:-4,near:1,far:20});sc.add(dl);
+const d2=new THREE.DirectionalLight(0xffffff,.3);d2.position.set(-3,4,-5);sc.add(d2);
+const led=new THREE.PointLight(0xffd98a,.5,3.5);sc.add(led);
+// ---------- helpers ----------
+const lam=c=>new THREE.MeshStandardMaterial({color:c,roughness:.8});
+function pix(base,spk){const c=document.createElement('canvas');c.width=c.height=16;const x=c.getContext('2d');x.fillStyle=base;x.fillRect(0,0,16,16);for(let i=0;i<90;i++){x.fillStyle=spk[i%spk.length];x.fillRect(Math.random()*16|0,Math.random()*16|0,1,1)}const t=new THREE.CanvasTexture(c);t.magFilter=t.minFilter=THREE.NearestFilter;t.wrapS=t.wrapT=THREE.RepeatWrapping;return t}
+const tm=(t,rx=1,ry=1)=>{const c=t.clone();c.needsUpdate=true;c.repeat.set(rx,ry);return new THREE.MeshStandardMaterial({map:c,roughness:.9})};
+const grassT=pix('#5da83a',['#4f9631','#6fba47']),dirtT=pix('#8b5a2b',['#74481f','#a06b38']),woodT=pix('#b07a3e',['#9a6a34','#c58c4c']),skyT=pix('#cfe9ff',['#e4f3ff','#bfe0fa']),floorT=pix('#d9d2c0',['#cfc7b2','#e4dece']);
+const woodM=tm(woodT),dirtM=tm(dirtT),grassM=tm(grassT),alu=new THREE.MeshStandardMaterial({color:0xb8bec6,metalness:.6,roughness:.4});
+function bx(g,w,h,d,m,x,y,z){const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);o.position.set(x,y,z);o.castShadow=o.receiveShadow=true;g.add(o);return o}
+function ctex(w,h,fn){const c=document.createElement('canvas');c.width=w;c.height=h;fn(c.getContext('2d'));return new THREE.CanvasTexture(c)}
+function txt(x,t,cx,cy,mw,s,c){x.fillStyle=c;x.textAlign='center';do{x.font=`bold ${s}px "Noto Sans Thai",Sarabun,sans-serif`;s-=2}while(x.measureText(t).width>mw&&s>10);x.fillText(t,cx,cy)}
+function lab(t,c,x,y,z,s=.7){const cv=document.createElement('canvas');cv.width=256;cv.height=64;const q=cv.getContext('2d');q.font='bold 34px "Noto Sans Thai",sans-serif';q.textAlign='center';q.lineWidth=6;q.strokeStyle='#fff';q.strokeText(t,128,44);q.fillStyle=c;q.fillText(t,128,44);const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthTest:false}));sp.scale.set(s,s/4,1);sp.position.set(x,y,z);sp.renderOrder=9;return sp}
+const ln=(p,c='#d00')=>{const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints(p.map(a=>new THREE.Vector3(...a))),new THREE.LineBasicMaterial({color:c,depthTest:false}));l.renderOrder=8;return l};
+const G={};['shell','decor','desk','shelf','table','board','station','dims','entr'].forEach(k=>{G[k]=new THREE.Group();sc.add(G[k])});
+const itm=[],B=(w,h,d)=>new THREE.BoxGeometry(w,h,d),SP=r=>new THREE.SphereGeometry(r,12,8),CY=(r,h)=>new THREE.CylinderGeometry(r,r,h,10),K=['#d9534f','#4aa3e0','#f5c518','#5da83a','#ffffff'];
+function add(k,h,geo,col,x,y,z,ry=0){const o=new THREE.Mesh(geo,lam(col));o.position.set(x,y,z);o.rotation.y=ry;o.castShadow=true;sc.add(o);itm.push({o,k,h})}
+function fig(g,x,y,z,ry,shirt,pants,hair){const f=new THREE.Group(),sk=lam('#e0ac69');const p=(w,h,d,m,px,py)=>{const o=new THREE.Mesh(B(w,h,d),m);o.position.set(px,py,0);o.castShadow=true;f.add(o)};
+p(.05,.15,.05,lam(pants),-.026,.075);p(.05,.15,.05,lam(pants),.026,.075);p(.1,.15,.05,lam(shirt),0,.225);p(.04,.15,.05,sk,-.07,.225);p(.04,.15,.05,sk,.07,.225);p(.1,.1,.1,sk,0,.35);p(.104,.03,.104,lam(hair),0,.4);f.position.set(x,y,z);f.rotation.y=ry;g.add(f)}
+function tree(x,z){const t=new THREE.Group(),p=(w,h,d,m,y)=>{const o=new THREE.Mesh(B(w,h,d),m);o.position.y=y;o.castShadow=true;t.add(o)};p(.08,.35,.04,lam('#8a5a28'),.175);p(.34,.14,.05,lam('#3f7d2a'),.42);p(.24,.14,.05,lam('#5da83a'),.56);p(.12,.1,.05,lam('#3f7d2a'),.68);t.position.set(x,.1,z);G.decor.add(t)}
+// ---------- static: floor ----------
+bx(sc,2,.04,2,tm(floorT,8,8),0,-.02,0);
+const gr=new THREE.Mesh(new THREE.PlaneGeometry(14,14),new THREE.MeshStandardMaterial({color:0xe8eaed}));gr.rotation.x=-Math.PI/2;gr.position.y=-.041;gr.receiveShadow=true;sc.add(gr);
+sc.add(ln([[-1,.03,-1],[1,.03,-1],[1,.03,1],[-1,.03,1],[-1,.03,-1]],'#555'));
+// ---------- shell (walls, frame, sign) ----------
+let H=2.5;
+const signT=ctex(1024,300,x=>{x.fillStyle='#2e7d32';x.fillRect(0,0,1024,300);x.fillStyle='#5da83a';x.fillRect(0,0,1024,30);x.fillStyle='#4f9631';for(let i=0;i<1024;i+=40)x.fillRect(i,0,20,15);x.strokeStyle='#8a5a28';x.lineWidth=14;x.strokeRect(7,7,1010,286);
+txt(x,'ELEMENTARY EDUCATION',512,115,900,70,'#fff');txt(x,'สาขาวิชาประถมศึกษา',512,190,800,60,'#f5c518');txt(x,'BUILD YOUR LEARNING WORLD',512,255,860,44,'#fff')});
+function shell(){const g=G.shell;while(g.children.length)g.remove(g.children[0]);const T=.05,wm=(w,h)=>tm(skyT,w/.25,h/.25);
+bx(g,2.1,H,T,wm(2.1,H),0,H/2,-1-T/2);bx(g,T,H,2,wm(2,H),-1-T/2,H/2,0);
+[[-1,-1,H],[1,-1,H],[-1,1,H-.6],[1,1,H-.6]].forEach(([x,z,h])=>bx(g,.06,h,.06,alu,x,h/2,z));
+const sm=new THREE.MeshStandardMaterial({map:signT,emissive:0x222222,roughness:.6});
+const wh=lam('#f4f4f4');bx(g,2.1,.6,.12,wh,0,H-.3,1);bx(g,2.1,.04,.14,alu,0,H-.02,1);bx(g,2.1,.04,.14,alu,0,H-.58,1);[1.07,.93].forEach((z,i)=>bx(g,1.5,.44,.02,[woodM,woodM,woodM,woodM,i?woodM:sm,i?sm:woodM],0,H-.3,z));bx(g,2.1,.05,.05,alu,0,H-.025,-1);[-1,1].forEach(x=>bx(g,.05,.05,2,alu,x,H-.025,0));bx(g,.02,H,.03,alu,-1.06,H/2,.1);bx(g,.03,H,.02,alu,0,H/2,-1.06);
+bx(g,2,.02,.04,new THREE.MeshBasicMaterial({color:0xffe8a0}),0,H-.61,1.04);led.position.set(0,H-.8,1.3)}
+// ---------- decor ----------
+const pl=(w,d,x,z)=>bx(G.decor,w,.12,d,[dirtM,dirtM,grassM,dirtM,dirtM,dirtM],x,.06,z);
+pl(2.14,.09,0,-1.025);pl(.09,2,-1.025,0);tree(-1.08,-.3);tree(-1.08,.4);
+[[-.7,2.25],[.6,2.2],[.1,2.33]].forEach(([x,y])=>bx(G.decor,.3,.09,.03,lam('#fff'),x,y,-.985));
+// ---------- shelf ----------
+const sx=0,sz=-.85;
+[.015,.44,.87,1.285].forEach(y=>bx(G.shelf,.8,.03,.3,woodM,sx,y,sz));[-.385,.385].forEach(x=>bx(G.shelf,.03,1.3,.3,woodM,x,.65,sz));bx(G.shelf,.8,1.3,.01,tm(dirtT),0,.65,-.995);
+[0,1,2,3].forEach(i=>add('ws','shelf',B(.06,.3,.2),K[i],-.3+i*.075,.18,sz));
+add('in','shelf',B(.18,.1,.14),'#f5c518',.1,.08,sz);add('in','shelf',B(.18,.1,.14),'#5da83a',.1,.18,sz);add('in','shelf',B(.18,.1,.14),'#4aa3e0',.3,.08,sz);
+for(let i=0;i<5;i++)add('th','shelf',B(.1,.14,.012),K[i],-.32+i*.1,.525,-.9);
+add('so','shelf',B(.22,.02,.16),'#e8d49a',.25,.465,sz);add('so','shelf',B(.03,.1,.03),'#d9534f',.2,.52,sz);
+[-.32,-.22,-.12].forEach((x,i)=>add('ma','shelf',B(.08,.08,.08),K[i],x,.925,sz));
+add('sc','shelf',SP(.06),'#5da83a',0,.945,sz);add('sc','shelf',CY(.035,.12),'#4aa3e0',.1,.945,sz);add('in','shelf',B(.1,.18,.1),'#f5c518',.28,.975,sz);add('in','shelf',B(.1,.1,.1),'#d9534f',.28,1.115,sz);
+// ---------- desk ----------
+bx(G.desk,.5,.9,.55,woodM,-.75,.45,-.45);bx(G.desk,.54,.04,.59,tm(floorT),-.75,.92,-.45);
+const infoT=ctex(256,96,x=>{x.fillStyle='#fffdf5';x.fillRect(0,0,256,96);x.fillStyle='#2e7d32';x.fillRect(0,0,256,10);txt(x,'INFO',128,62,200,56,'#2e7d32')});
+const ip=new THREE.Mesh(new THREE.PlaneGeometry(.3,.12),new THREE.MeshBasicMaterial({map:infoT}));ip.position.set(-.497,.55,-.45);ip.rotation.y=Math.PI/2;G.desk.add(ip);
+add('ws','desk',B(.15,.02,.2),'#fff',-.7,.95,-.6);add('ws','desk',B(.15,.02,.2),'#bfe0fa',-.68,.97,-.58,.2);fig(G.desk,-.75,.94,-.3,Math.PI/2,'#2e9ec7','#3b3b8a','#4a2e12');
+// ---------- station ----------
+bx(G.station,.45,.04,.45,grassM,-.775,.6,.125);[[-.97,-.08],[-.58,-.08],[-.97,.33],[-.58,.33]].forEach(([x,z])=>bx(G.station,.04,.58,.04,woodM,x,.29,z));
+[-.85,-.77,-.69].forEach((x,i)=>add('ma','station',B(.08,.08,.08),K[i],x,.66,0));add('ma','station',B(.08,.08,.08),'#f5c518',-.77,.74,0);
+add('in','station',B(.1,.06,.1),'#5da83a',-.75,.65,.22);for(let i=0;i<3;i++)add('th','station',B(.1,.14,.012),K[i],-.88+i*.1,.69,.3);
+// ---------- display table ----------
+bx(G.table,.5,.04,.75,woodM,.75,.8,-.325);bx(G.table,.46,.03,.7,woodM,.75,.25,-.325);[[.53,-.67],[.97,-.67],[.53,.02],[.97,.02]].forEach(([x,z])=>bx(G.table,.04,.78,.04,woodM,x,.39,z));
+for(let i=0;i<3;i++)add('th','table',B(.09,.12,.012),K[i],.6+i*.1,.88,-.62);
+add('ma','table',B(.07,.07,.07),'#d9534f',.62,.86,-.45);add('ma','table',B(.07,.07,.07),'#4aa3e0',.7,.86,-.45);add('ma','table',B(.07,.07,.07),'#f5c518',.66,.93,-.45);
+add('sc','table',SP(.06),'#5da83a',.9,.88,-.45);add('sc','table',CY(.03,.14),'#4aa3e0',.82,.89,-.45);
+add('so','table',B(.22,.015,.16),'#e8d49a',.72,.83,-.25);add('so','table',B(.02,.1,.02),'#d9534f',.78,.88,-.25);
+add('ws','table',B(.2,.03,.14),'#fff',.62,.835,-.05);add('ws','table',B(.2,.03,.14),'#bfe0fa',.62,.865,-.05,.15);
+add('in','table',B(.1,.16,.1),'#f5c518',.9,.9,-.1);add('in','table',B(.08,.08,.08),'#d9534f',.9,.98,-.1);
+fig(G.table,.9,.82,-.62,-.5,'#5da83a','#3b3b8a','#222');
+function mv(h,dx,dz){G[h].position.x+=dx;G[h].position.z+=dz;itm.forEach(i=>{if(i.h==h){i.o.position.x+=dx;i.o.position.z+=dz}})}
+mv('shelf',-.6,0);mv('desk',0,.03);mv('table',-.65,-.3);
+// ---------- boards ----------
+function btex(t,s,a){return ctex(512,280,x=>{x.fillStyle='#fffdf5';x.fillRect(0,0,512,280);x.fillStyle='#2e7d32';x.fillRect(0,0,512,62);x.fillStyle='#5da83a';x.fillRect(0,0,512,10);txt(x,t,256,46,470,34,'#fff');
+for(let i=0;i<3;i++){const X=22+i*160;x.fillStyle='#8fd0ff';x.fillRect(X,80,150,100);x.fillStyle='#5da83a';x.fillRect(X,150,150,30);x.fillStyle=K[i];x.fillRect(X+20+i*20,115,34,35);x.fillStyle='#fff';x.fillRect(X+90,95,40,12)}
+txt(x,s,256,225,470,26,'#222');x.fillStyle=a;x.fillRect(22,248,468,8)})}
+function brd(t,s,a,w,h,x,y,z,ry){const m=new THREE.MeshStandardMaterial({map:btex(t,s,a)});const o=bx(G.board,w,h,.03,[woodM,woodM,woodM,woodM,m,woodM],x,y,z);o.rotation.y=ry}
+brd('ACTIVE LEARNING','เรียนรู้ด้วยการลงมือทำ','#f5c518',1.2,.55,0,1.97,-.97,0);
+brd('ผลงานนักศึกษา','สื่อการสอน · ใบงาน · นวัตกรรม','#4aa3e0',.9,.5,-.97,1.72,-.5,Math.PI/2);
+brd('สาขาวิชาประถมศึกษา','หลักสูตรและการจัดการเรียนรู้','#d9534f',.9,.5,-.97,1.72,.5,Math.PI/2);
+// ---------- entrances ----------
+[[0,'ทางเข้า 1',2,.5,0,.75],[1,'ทางเข้า 2',.5,2,.75,0]].forEach(([s,t,pw,pd,px,pz])=>{const m=new THREE.Mesh(new THREE.PlaneGeometry(pw,pd),new THREE.MeshBasicMaterial({color:0x2ecc71,transparent:true,opacity:.55}));m.rotation.x=-Math.PI/2;m.position.set(px,.012+s*.002,pz);G.entr.add(m);
+const c=new THREE.Mesh(new THREE.ConeGeometry(.08,.18,8),new THREE.MeshBasicMaterial({color:0x1b9e4a}));c.rotation.x=Math.PI;c.position.set(px,.5,pz);G.entr.add(c);G.entr.add(lab(t,'#1b7a1b',px,.72,pz,.8))});
+// ---------- dimensions ----------
+function dims(){const g=G.dims;while(g.children.length)g.remove(g.children[0]);const y=.02,r='#c00';
+g.add(ln([[-1,y,1.4],[1,y,1.4]]),ln([[-1,y,1.3],[-1,y,1.5]]),ln([[1,y,1.3],[1,y,1.5]]),lab('2.00 m',r,0,y,1.55));
+g.add(ln([[-1.4,y,-1],[-1.4,y,1]]),ln([[-1.3,y,-1],[-1.5,y,-1]]),ln([[-1.3,y,1],[-1.5,y,1]]),lab('2.00 m',r,-1.65,y,0));
+g.add(ln([[1.35,0,1],[1.35,H,1]]),ln([[1.28,0,1],[1.42,0,1]]),ln([[1.28,H,1],[1.42,H,1]]),lab(H.toFixed(2)+' m',r,1.65,H/2,1));
+[[-1,1]].forEach(([a,b])=>g.add(ln([[a,y,1.15],[b,y,1.15]]),ln([[a,y,1.1],[a,y,1.2]]),ln([[b,y,1.1],[b,y,1.2]]),lab('ทางเข้า 1: 2.00 m',r,(a+b)/2,y,1.25,.9)));g.add(ln([[1.15,y,-1],[1.15,y,1]]),ln([[1.1,y,-1],[1.2,y,-1]]),ln([[1.1,y,1],[1.2,y,1]]),lab('ทางเข้า 2: 2.00 m',r,1.55,y,0,.9))}
+// ---------- visibility + collision check ----------
+const S={dims:1,entr:1,decor:1,desk:1,shelf:1,table:1,board:1,station:1,th:1,ma:1,sc:1,so:1,ws:1,in:1};
+const vis=()=>{['dims','entr','decor','desk','shelf','table','board','station'].forEach(k=>G[k].visible=!!S[k]);itm.forEach(i=>i.o.visible=!!(S[i.k]&&S[i.h]))};
+const furn=[[-1,-.5,-.695,-.145],[-1,-.55,-.1,.35],[-.15,.35,-1,-.25],[-1,-.2,-1,-.7]],zones=[[-1,1,.5,1],[.5,1,-1,1],[-.5,.5,-.2,1]];
+const clear=!furn.some(f=>zones.some(z=>f[0]<z[1]&&f[1]>z[0]&&f[2]<z[3]&&f[3]>z[2]));
+// ---------- views ----------
+const VW=[['VIEW A — 3D ISOMETRIC',[1,.8,1.15],[0,1.1,0]],['VIEW B — TOP VIEW / FLOOR PLAN',[0,1,.0001],[0,0,0]],['VIEW C — FRONT ELEVATION',[0,0,1],[0,1.2,0]],['VIEW D — LEFT SIDE ELEVATION',[-1,0,0],[0,1.2,0]],['VIEW E — RIGHT SIDE ELEVATION',[1,0,0],[0,1.2,0]],['VIEW F — REAR ELEVATION',[0,0,-1],[0,1.2,0]]];
+let tw=null,cur=0;
+function go(i){cur=i;const v=VW[i],t=new THREE.Vector3(...v[2]);tw={p0:cam.position.clone(),t0:ctl.target.clone(),p1:t.clone().add(new THREE.Vector3(...v[1]).normalize().multiplyScalar(12)),t1:t,z0:cam.zoom,k:0};
+document.querySelectorAll('.vb button').forEach((b,j)=>b.classList.toggle('on',j==i));info()}
+const info=()=>{$('vn').textContent=VW[cur][0]+' · 2.00 × 2.00 × '+H.toFixed(2)+' m'};
+// ---------- UI ----------
+const TG=[['dims','เส้นบอกขนาด'],['entr','ป้ายตำแหน่งทางเข้า'],['decor','ของตกแต่ง Minecraft'],['desk','โต๊ะประชาสัมพันธ์'],['shelf','ชั้นวางสื่อการสอน'],['table','โต๊ะแสดงผลงาน'],['board','บอร์ดแสดงผลงาน'],['station','จุดกิจกรรม Interactive']],MG=[['th','ภาษาไทย'],['ma','คณิตศาสตร์'],['sc','วิทยาศาสตร์'],['so','สังคมศึกษา'],['ws','ใบงาน / แผนการสอน'],['in','สื่อนวัตกรรม']];
+const cb=a=>a.map(([k,t])=>`<label><input type="checkbox" data-k="${k}" checked> ${t}</label>`).join('');
+$('pn').innerHTML=`<h3>มุมมอง</h3><div class="vb">${VW.map((v,i)=>`<button data-v="${i}">${v[0].replace(' — ','<br>')}</button>`).join('')}</div><button id="rs" style="width:100%;margin-top:6px">รีเซ็ตมุมกล้อง</button>
+<h3>ความสูงบูธ: <span id="hv">2.50</span> m</h3><input type="range" id="h" min="2.4" max="2.6" step=".01" value="2.5">
+<h3>องค์ประกอบ</h3>${cb(TG)}<h3>สื่อการเรียนรู้แต่ละกลุ่ม</h3>${cb(MG)}
+<div class="ok ${clear?'':'bad'}">${clear?'✓ ตรวจอัตโนมัติ: ทางเข้า 2 ทาง (ด้านหน้าและด้านขวา ทางละ 2.00 ม.) และพื้นที่กลางโล่ง':'⚠ เฟอร์นิเจอร์ทับทางเข้า'}</div>
+<h3>ข้อมูล</h3><small>พื้นที่ 2.00 × 2.00 ม. = 4.00 ตร.ม.<br>ผนังหลัง + ผนังซ้ายลึกเต็ม 2.00 ม. · เปิดด้านหน้า 2.00 ม. (ทางเข้า 1) และด้านขวา 2.00 ม. (ทางเข้า 2)<br>กล้องแบบ Orthographic (มุมมองด้านบนและด้านต่าง ๆ เป็นภาพตรงจริง)<br>ลากเพื่อหมุน · บีบ/เลื่อนล้อเพื่อซูม · ต้องเชื่อมต่ออินเทอร์เน็ตเพื่อโหลด Three.js</small>`;
+$('pn').addEventListener('click',e=>{const b=e.target.closest('[data-v]');if(b)go(+b.dataset.v);if(e.target.id=='rs')go(cur)});
+$('pn').addEventListener('change',e=>{const k=e.target.dataset.k;if(k){S[k]=e.target.checked?1:0;vis()}});
+$('h').addEventListener('input',e=>{H=+e.target.value;$('hv').textContent=H.toFixed(2);shell();dims();info()});
+function rs(){const w=wrap.clientWidth,h=wrap.clientHeight;if(!w||!h)return;R.setSize(w,h);const a=w/h;let hh=3.1,hw=hh*a;if(hw<2.7){hw=2.7;hh=hw/a}Object.assign(cam,{left:-hw,right:hw,top:hh,bottom:-hh});cam.updateProjectionMatrix()}
+new ResizeObserver(rs).observe(wrap);
+shell();dims();vis();cam.position.set(7,5.6,8);cam.zoom=1;go(0);rs();
+(function loop(){requestAnimationFrame(loop);if(tw){tw.k+=.05;const e=1-Math.pow(1-Math.min(tw.k,1),3);cam.position.lerpVectors(tw.p0,tw.p1,e);ctl.target.lerpVectors(tw.t0,tw.t1,e);cam.zoom=tw.z0+(1-tw.z0)*e;cam.updateProjectionMatrix();if(tw.k>=1)tw=null}ctl.update();R.render(sc,cam)})();
+</script></body></html>
